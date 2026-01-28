@@ -18,8 +18,7 @@
     }
 
     function sections() {
-        return Array.from(document.querySelectorAll('.items')).map((el, i) 
-=> {
+return Array.from(document.querySelectorAll('.items')).map((el, i) => {
             const title = el.querySelector('.items__title');
             const line  = el.querySelector('.items-line');
             if (!line) return null;
