@@ -1,139 +1,94 @@
-(function () {
-    'use strict';
+export default {
+    id: 'mainPageEditor',
+    name: 'Main Page Editor',
+    description: 'Управление разделами главной страницы Lampa',
+    version: '1.0',
+    icon: 'fas fa-th-large',
 
-    if (!window.Lampa) return;
+    async ready() {
+        // Проверяем, что объект Lampa доступен
+        if (!window.Lampa) return;
 
-    const STORAGE = 'home_sections_manager_cfg';
+        // Получаем текущие разделы через API Lampa
+        const sections = window.Lampa?.main?.sections || [];
 
-    function load() {
-        return Lampa.Storage.get(STORAGE, {
-            hidden: {},
-            order: [],
-            merge: true
-        });
-    }
+        // Хранилище настроек
+        const storage = window.Lampa?.storage || {};
+        let savedOrder = storage.get('mainSectionsOrder') || sections.map(s => s.id);
+        let savedHidden = storage.get('mainSectionsHidden') || {};
 
-    function save(cfg) {
-        Lampa.Storage.set(STORAGE, cfg);
-    }
+        // Создаем UI в настройках
+        const container = document.createElement('div');
+        container.style.padding = '10px';
 
-    function sections() {
-return Array.from(document.querySelectorAll('.items')).map((el, i) => {
-            const title = el.querySelector('.items__title');
-            const line  = el.querySelector('.items-line');
-            if (!line) return null;
+        container.innerHTML = '<h3>Main Page Editor</h3><div id="mpe_controls"></div>';
+        document.body.appendChild(container);
 
-            return {
-                id: 'sec_' + i,
-                title: title ? title.textContent.trim() : 'Раздел ' + (i + 
-1),
-                el,
-                line
-            };
-        }).filter(Boolean);
-    }
+        const controls = container.querySelector('#mpe_controls');
 
-    function apply() {
-        const cfg = load();
-        const list = sections();
-        if (!list.length) return;
+        // Создаем элемент управления для каждого раздела
+        savedOrder.forEach(id => {
+            const section = sections.find(s => s.id === id);
+            if (!section) return;
 
-        list.forEach(s => {
-            s.el.style.display = cfg.hidden[s.id] ? 'none' : '';
-        });
+            const div = document.createElement('div');
+            div.style.marginBottom = '8px';
 
-        const parent = list[0].el.parentElement;
-        if (!parent) return;
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = !savedHidden[id];
+            checkbox.addEventListener('change', () => {
+                savedHidden[id] = !checkbox.checked;
+                storage.set('mainSectionsHidden', savedHidden);
+                this.applySettings(sections, savedOrder, savedHidden);
+            });
 
-        const ordered = cfg.order.length
-            ? cfg.order.map(id => list.find(s => s.id === 
-id)).filter(Boolean)
-            : list;
-
-        ordered.forEach(s => parent.appendChild(s.el));
-
-        if (cfg.merge && list.length >= 2) merge(list[0], list[1]);
-    }
-
-    function merge(a, b) {
-        if (a.el.dataset.merged) return;
-
-        const wrap = document.createElement('div');
-        wrap.className = 'items';
-        wrap.dataset.merged = '1';
-
-        const title = document.createElement('div');
-        title.className = 'items__title';
-        title.textContent = a.title + ' + ' + b.title;
-
-        const line = document.createElement('div');
-        line.className = 'items-line';
-
-        [...a.line.children, ...b.line.children].forEach(c => {
-            line.appendChild(c.cloneNode(true));
-        });
-
-        wrap.appendChild(title);
-        wrap.appendChild(line);
-
-        b.el.after(wrap);
-        a.el.style.display = 'none';
-        b.el.style.display = 'none';
-    }
-
-    function settings() {
-        const cfg = load();
-        const list = sections();
-
-        let html = `
-            <label style="display:block;margin-bottom:10px">
-                <input type="checkbox" id="merge" ${cfg.merge ? 'checked' 
-: ''}>
-                Объединять первые два раздела
-            </label>
-            <hr>
-        `;
-
-        list.forEach(s => {
-            html += `
-                <label style="display:block;margin:6px 0">
-                    <input type="checkbox" data-id="${s.id}" 
-${!cfg.hidden[s.id] ? 'checked' : ''}>
-                    ${s.title}
-                </label>
-            `;
-        });
-
-        Lampa.Modal.open({
-            title: 'Главная страница',
-            html
-        });
-
-        setTimeout(() => {
-            document.getElementById('merge').onchange = e => {
-                cfg.merge = e.target.checked;
-                save(cfg);
-                apply();
+            const up = document.createElement('button');
+            up.textContent = '↑';
+            up.onclick = () => {
+                const index = savedOrder.indexOf(id);
+                if (index > 0) {
+                    [savedOrder[index], savedOrder[index - 1]] = [savedOrder[index - 1], savedOrder[index]];
+                    storage.set('mainSectionsOrder', savedOrder);
+                    this.applySettings(sections, savedOrder, savedHidden);
+                }
             };
 
-            document.querySelectorAll('[data-id]').forEach(el => {
-                el.onchange = () => {
-                    cfg.hidden[el.dataset.id] = !el.checked;
-                    save(cfg);
-                    apply();
-                };
-            });
-        }, 100);
+            const down = document.createElement('button');
+            down.textContent = '↓';
+            down.onclick = () => {
+                const index = savedOrder.indexOf(id);
+                if (index < savedOrder.length - 1) {
+                    [savedOrder[index], savedOrder[index + 1]] = [savedOrder[index + 1], savedOrder[index]];
+                    storage.set('mainSectionsOrder', savedOrder);
+                    this.applySettings(sections, savedOrder, savedHidden);
+                }
+            };
+
+            div.appendChild(checkbox);
+            div.appendChild(document.createTextNode(' ' + section.name));
+            div.appendChild(up);
+            div.appendChild(down);
+
+            controls.appendChild(div);
+        });
+
+        // Применяем настройки
+        this.applySettings(sections, savedOrder, savedHidden);
+    },
+
+    // Функция применения настроек через Lampa API
+    applySettings(sections, order, hidden) {
+        sections.forEach((sect) => {
+            try {
+                // Скрыть или показать раздел
+                window.Lampa.main.setSectionHidden(sect.id, Boolean(hidden[sect.id]));
+
+                // Поменять порядок (если Lampa API позволяет)
+                window.Lampa.main.setSectionOrder(sect.id, order.indexOf(sect.id));
+            } catch (e) {
+                console.warn('MainPageEditor: невозможно применить для', sect.id);
+            }
+        });
     }
-
-    Lampa.Listener.follow('app', e => {
-        if (e.type === 'ready') {
-            setTimeout(apply, 2000);
-
-            Lampa.Settings.add({
-                title: 'Главная страница',
-                onClick: settings
-            });
-        }
-    });
-})();
+};
